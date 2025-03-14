@@ -172,6 +172,7 @@
       text-align: center;
     }
   </style>
+  <script src="https://static.line-scdn.net/liff/edge/2.1/sdk.js"></script>
 </head>
 <body>
 
@@ -213,6 +214,35 @@
   </div>
 
   <script>
+    // 你的 LIFF ID （在 LINE Developer Portal 裡可找到）
+    const LIFF_ID = "2007063542-ovOK17b7"; 
+    let userId = "";  // 用來存 LINE userId
+    
+    async function initLiffAndGetProfile() {
+      try {
+        await liff.init({ liffId: LIFF_ID }); // 初始化
+    
+        // 如果未登入就自動登入
+        if (!liff.isLoggedIn()) {
+          liff.login();
+          return;
+        }
+    
+        // 已登入 -> 取 profile
+        const profile = await liff.getProfile();
+        userId = profile.userId; 
+        console.log("LINE UserId =", userId);
+    
+        // 這裡 userId 就可供你後續 fetch 到後端
+        // (以下你可以呼叫原本 fetchLocationsData -> fetchUserCheckIns(userId) 等流程)
+        initPageAfterGotUserId();
+    
+      } catch (err) {
+        console.error("LIFF init error:", err);
+        alert("LIFF 初始化失敗：" + err);
+      }
+    }
+    
     /*************************************************************************
      * 後端 (Apps Script Web App) 的網址
      * 注意：一定要用 "exec" 結尾、公開可讀
@@ -228,10 +258,13 @@
     const CHECKIN_RADIUS = 500; // 500公尺
 
     // 頁面載入
-    window.onload = initPage;
+    window.onload = () => {
+      // 先跑 LIFF
+      initLiffAndGetProfile();
+    };
 
-    function initPage() {
-      // 先抓地點，然後抓使用者簽到
+    function initPageAfterGotUserId() {
+      // 這裡跟你原本 initPage() 裏的內容類似
       fetchLocationsData()
         .then(locData => {
           locations = locData;
@@ -245,12 +278,9 @@
           }
         })
         .catch(err => {
-          console.error('初始化失敗:', err);
-          alert('無法取得地點或簽到資料：' + err.message);
+          console.error("初始化失敗：", err);
+          alert("無法取得地點或簽到資料：" + err.message);
         });
-
-      // 綁定「簽到」按鈕
-      document.getElementById('checkinBtn').addEventListener('click', checkNearestLocation);
     }
 
     // 顯示集點卡
