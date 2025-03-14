@@ -87,13 +87,20 @@
       background: #4B00C3;
     }
 
-    /* stamp-card: 固定兩欄 */
+    /* 集點卡區 */
+    .stamp-title {
+      font-size: var(--md3-font-size-title);
+      margin-bottom: 8px;
+    }
+    /* stamp-card: 改用 grid，2 欄，欄距 gap=16px */
     .stamp-card {
       display: grid;
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: 1fr 1fr;  /* 兩欄 */
       gap: 16px;
       margin-top: 20px;
-      justify-items: center;
+    
+      /* 讓每個格子的內容置中（可加可不加） */
+      justify-items: center;  
       align-items: center;
     }
     .stamp-slot {
@@ -158,16 +165,13 @@
       box-shadow: var(--md3-elevation-high);
     }
 
-    /* 禮物區 */
+    /* 禮物區 (預設隱藏) */
     #giftSection {
       display: none;
       margin-top: 20px;
       text-align: center;
     }
   </style>
-
-  <!-- LIFF SDK -->
-  <script src="https://static.line-scdn.net/liff/edge/2.1/sdk.js"></script>
 </head>
 <body>
 
@@ -183,7 +187,7 @@
       <p>若你已經身處該地點 500 公尺範圍內，即可成功蓋章</p>
     </div>
 
-    <!-- 「簽到」按鈕 -->
+    <!-- 單一按鈕：最近地點簽到 -->
     <button class="single-checkin-button" id="checkinBtn">
       簽到
     </button>
@@ -192,10 +196,11 @@
     <h2 class="stamp-title">我的集點卡</h2>
     <div id="stampCard" class="stamp-card"></div>
 
-    <!-- 解鎖禮物區 -->
+    <!-- 解鎖禮物區塊 -->
     <div id="giftSection">
       <h2>恭喜解鎖禮物！</h2>
       <p>您已經集滿所有景點，快來領取專屬電子桌布：</p>
+      <!-- 可換成你自己的檔案路徑或連結 -->
       <a href="https://example.com/myGift.png" target="_blank">
         <img src="https://example.com/myGiftThumbnail.png" style="max-width: 200px;">
       </a>
@@ -209,77 +214,24 @@
 
   <script>
     /*************************************************************************
-     * 1. LIFF 設定
+     * 後端 (Apps Script Web App) 的網址
+     * 注意：一定要用 "exec" 結尾、公開可讀
      *************************************************************************/
-    const LIFF_ID = "2007063542-ovOK17b7"; 
-    let userId = "";  // 用來存 LINE userId
+    const BASE_URL = "https://script.google.com/macros/s/AKfycbwfVWaPebUgwrHWEfTvEkomcM5Hra12YAurH5aoczGx3vrZ2lAyw-cnDxGWMccKjVWnug/exec"; // <= 換成你的
 
-    // 初始化 LIFF
-    async function initLiffAndGetProfile() {
-      try {
-        await liff.init({ liffId: LIFF_ID }); // 初始化
+    // 從網址 ?user=xxx 取得使用者ID，若無則預設 'guest'
+    const urlParams = new URLSearchParams(window.location.search);
+    const userId = urlParams.get('user') || 'guest';
 
-        // 如果未登入就自動登入
-        if (!liff.isLoggedIn()) {
-          liff.login();
-          return;
-        }
-
-        // 已登入 -> 取 profile
-        const profile = await liff.getProfile();
-        userId = profile.userId; 
-        console.log("LINE UserId =", userId);
-
-        // 拿到 LINE userId 後再執行打卡頁面的流程
-        initPageAfterGotUserId();
-
-      } catch (err) {
-        console.error("LIFF init error:", err);
-        alert("LIFF 初始化失敗：" + err);
-      }
-    }
-
-    /*************************************************************************
-     * 2. Apps Script Web App
-     *************************************************************************/
-    const BASE_URL = "https://script.google.com/macros/s/AKfycbwfVWaPebUgwrHWEfTvEkomcM5Hra12YAurH5aoczGx3vrZ2lAyw-cnDxGWMccKjVWnug/exec";
-
-    // 從後端抓「地點清單」
-    function fetchLocationsData() {
-      const url = `${BASE_URL}?action=getLocationsData`;
-      return fetch(url).then(res => {
-        if (!res.ok) throw new Error('取得地點失敗');
-        return res.json();
-      });
-    }
-
-    // 取得「該 userId」已簽到的地點清單
-    function fetchUserCheckIns(uid) {
-      const url = `${BASE_URL}?action=getCheckInsByUser&userId=${encodeURIComponent(uid)}`;
-      return fetch(url).then(res => {
-        if (!res.ok) throw new Error('取得使用者簽到失敗');
-        return res.json();
-      });
-    }
-
-    // 執行「簽到」
-    function recordCheckin(uid, locationId) {
-      const url = `${BASE_URL}?action=recordCheckin&userId=${encodeURIComponent(uid)}&locationId=${encodeURIComponent(locationId)}`;
-      return fetch(url).then(res => {
-        if (!res.ok) throw new Error('recordCheckin API 錯誤');
-        return res.json();
-      });
-    }
-
-    /*************************************************************************
-     * 3. 初始化(拿到 userId 後)，才能做接下來的事
-     *************************************************************************/
-    let locations = [];     // 從後端抓的地點清單
+    let locations = [];     // 從後端抓取的地點清單
     let userCheckIns = [];  // 已簽到的地點ID
-    const CHECKIN_RADIUS = 500; // 0.5km
+    const CHECKIN_RADIUS = 500; // 500公尺
 
-    // LIFF 已取得 userId -> 開始執行
-    function initPageAfterGotUserId() {
+    // 頁面載入
+    window.onload = initPage;
+
+    function initPage() {
+      // 先抓地點，然後抓使用者簽到
       fetchLocationsData()
         .then(locData => {
           locations = locData;
@@ -293,12 +245,15 @@
           }
         })
         .catch(err => {
-          console.error("初始化失敗：", err);
-          alert("無法取得地點或簽到資料：" + err.message);
+          console.error('初始化失敗:', err);
+          alert('無法取得地點或簽到資料：' + err.message);
         });
+
+      // 綁定「簽到」按鈕
+      document.getElementById('checkinBtn').addEventListener('click', checkNearestLocation);
     }
 
-    // 渲染集點卡
+    // 顯示集點卡
     function renderStampCard() {
       const stampCardEl = document.getElementById('stampCard');
       stampCardEl.innerHTML = '';
@@ -313,6 +268,7 @@
           slot.classList.add('stamped');
           const stampImg = document.createElement('img');
           stampImg.className = 'stamp-image stamp-animation';
+          // 若沒圖片URL, 用 placeholder
           stampImg.src = loc.stampImage || 'https://via.placeholder.com/120?text=STAMP';
           slot.appendChild(stampImg);
         } else {
@@ -322,7 +278,7 @@
       });
     }
 
-    // 點擊「簽到」按鈕 -> GPS -> 找最近地點 -> 簽到
+    // 簽到 -> GPS -> 找最近地點 -> 若在500m內則打卡
     function checkNearestLocation() {
       if (!navigator.geolocation) {
         alert('你的裝置不支援 GPS 定位');
@@ -374,7 +330,7 @@
       );
     }
 
-    // 簽到後 -> 重新取得該 userId 的簽到紀錄 -> 更新畫面
+    // 簽到完成 -> 重新讀取使用者簽到 -> 更新集點卡
     function refreshStampCard() {
       fetchUserCheckIns(userId)
         .then(checkIns => {
@@ -397,7 +353,7 @@
     // 計算兩點距離(公尺) - haversine
     function getDistanceFromLatLngInM(lat1, lng1, lat2, lng2) {
       function deg2rad(deg) { return deg * (Math.PI / 180); }
-      const R = 6371000; // 地球半徑 (公尺)
+      const R = 6371000; // 地球半徑
       const dLat = deg2rad(lat2 - lat1);
       const dLng = deg2rad(lng2 - lng1);
       const a =
@@ -408,17 +364,40 @@
       return R * c;
     }
 
-    // 浮動按鈕 (FAB) -> 捲動頂部
+    // 浮動按鈕 -> 捲動頂部
     function scrollToTop() {
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
 
-    // 入口：頁面載入 -> 啟動 LIFF
-    window.onload = () => {
-      initLiffAndGetProfile();
-      // 綁定「簽到」按鈕
-      document.getElementById('checkinBtn').addEventListener('click', checkNearestLocation);
-    };
+    /*************************************************************************
+     * 以下為對後端 (Apps Script Web App) 呼叫
+     *************************************************************************/
+    // 取得地點清單
+    function fetchLocationsData() {
+      const url = `${BASE_URL}?action=getLocationsData`;
+      return fetch(url).then(res => {
+        if (!res.ok) throw new Error('取得地點失敗');
+        return res.json();
+      });
+    }
+
+    // 取得使用者已簽到資料
+    function fetchUserCheckIns(uid) {
+      const url = `${BASE_URL}?action=getCheckInsByUser&userId=${encodeURIComponent(uid)}`;
+      return fetch(url).then(res => {
+        if (!res.ok) throw new Error('取得使用者簽到失敗');
+        return res.json();
+      });
+    }
+
+    // 送出簽到
+    function recordCheckin(uid, locationId) {
+      const url = `${BASE_URL}?action=recordCheckin&userId=${encodeURIComponent(uid)}&locationId=${encodeURIComponent(locationId)}`;
+      return fetch(url).then(res => {
+        if (!res.ok) throw new Error('recordCheckin API 錯誤');
+        return res.json();
+      });
+    }
   </script>
 </body>
 </html>
