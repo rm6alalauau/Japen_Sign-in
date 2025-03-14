@@ -98,35 +98,47 @@
       gap: 16px;
       margin-top: 20px;
     }
-    .stamp-slot {
-      width: 120px;
-      height: 120px;
-      background-color: var(--md3-color-surface);
-      border: 2px dashed var(--md3-color-outline);
-      border-radius: var(--md3-shape-corner);
-      box-shadow: var(--md3-elevation);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      text-align: center;
-      padding: 4px;
-      overflow: hidden;
-      font-size: 0.9rem;
-      position: relative;
-    }
-    .stamp-slot.stamped {
-      border: none;
-      background-color: #E0DAF6;
-    }
+    /* stamp-slot: 讓它完整使用 flex 置中 */
+.stamp-slot {
+  width: 120px;
+  height: 120px;
+  /* 建議保留你原先的背景、邊框、box-shadow、border-radius... */
+  background-color: var(--md3-color-surface);
+  border: 2px dashed var(--md3-color-outline);
+  border-radius: var(--md3-shape-corner);
+  box-shadow: var(--md3-elevation);
 
-    .stamp-image {
-      width: 90%;
-      height: auto;
-      object-fit: contain;
-    }
-    .stamp-animation {
-      animation: stamp-pop 0.5s ease;
-    }
+  /* 這裡確保「內容(圖片)垂直水平置中」 */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  /* 你也可以保留 padding:4px, overflow:hidden; 依需求調整 */
+  padding: 4px;
+  overflow: hidden;
+  font-size: 0.9rem;
+  position: relative;
+}
+
+/* stamp-slot.stamped: 已蓋章就用實心底色 */
+.stamp-slot.stamped {
+  border: none;
+  background-color: #E0DAF6;
+}
+
+/* stamp-image: 以 max-width / max-height 控制大小，並自動置中 */
+.stamp-image {
+  display: block;       /* 讓 margin: auto 生效 */
+  margin: auto;         /* 自動水平置中 */
+  max-width: 90%;       /* 圖片不會大於 stamp-slot 的 90% */
+  max-height: 90%;      /* 同時控制高度 */
+  object-fit: contain;  /* 使圖片保持等比例 */
+}
+
+/* 另外可保留 stamp-animation，如原本的 @keyframes stamp-pop */
+.stamp-animation {
+  animation: stamp-pop 0.5s ease;
+}
     @keyframes stamp-pop {
       0% {
         transform: scale(2);
