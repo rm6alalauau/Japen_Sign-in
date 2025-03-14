@@ -92,12 +92,16 @@
       font-size: var(--md3-font-size-title);
       margin-bottom: 8px;
     }
+    /* stamp-card: 改用 grid，2 欄，欄距 gap=16px */
     .stamp-card {
-      display: flex;
-      flex-wrap: wrap;
+      display: grid;
+      grid-template-columns: 1fr 1fr;  /* 兩欄 */
       gap: 16px;
       margin-top: 20px;
-      justify-content: center; /* 關鍵：每行置中 */
+    
+      /* 讓每個格子的內容置中（可加可不加） */
+      justify-items: center;  
+      align-items: center;
     }
     .stamp-slot {
       width: 120px;
