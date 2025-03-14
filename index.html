@@ -1,10 +1,9 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1.0,shrink-to-fit=no">
+  <!-- 注意：這裡不再需要 <base target="_top">，因為我們不在 Apps Script HTML Service 裡 -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, shrink-to-fit=no">
   <title>打卡</title>
-
   <style>
     :root {
       --md3-color-primary: #6200EE;
@@ -17,21 +16,23 @@
       --md3-shape-corner: 12px;
       --md3-elevation: 0 1px 2px rgba(0, 0, 0, 0.15);
       --md3-elevation-high: 0 4px 8px rgba(0, 0, 0, 0.2);
-
       --md3-font-size-title: 1.25rem;
       --md3-font-size-body: 1rem;
     }
 
     * {
       box-sizing: border-box;
-      margin: 0;
-      padding: 0;
     }
     body {
+      margin: 0;
+      padding: 0;
       font-family: "Roboto", sans-serif;
       background: var(--md3-color-surface);
       color: var(--md3-color-on-surface);
       line-height: 1.5;
+    }
+    h1, h2, h3 {
+      margin: 0;
     }
 
     /* 上方標題列 */
@@ -65,7 +66,6 @@
       margin-bottom: 16px;
       box-shadow: var(--md3-elevation);
       font-size: var(--md3-font-size-body);
-      line-height: 1.4;
     }
 
     /* 單一按鈕：最近地點簽到 */
@@ -97,8 +97,6 @@
       gap: 16px;
       margin-top: 20px;
     }
-
-    /* stamp-slot: 使內容(文字或圖片)以 Grid 方式置中 */
     .stamp-slot {
       width: 120px;
       height: 120px;
@@ -106,29 +104,26 @@
       border: 2px dashed var(--md3-color-outline);
       border-radius: var(--md3-shape-corner);
       box-shadow: var(--md3-elevation);
-
-      display: grid;            /* 改用 grid */
-      place-items: center;      /* 文字/圖片垂直 & 水平置中 */
-      text-align: center;       /* 多行文字再保險居中 */
-
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 4px;
       overflow: hidden;
       font-size: 0.9rem;
+      position: relative;
     }
-
     .stamp-slot.stamped {
       border: none;
       background-color: #E0DAF6;
     }
 
-    /* stamp-image: 盡量放大、等比例 */
+    /* 圖片 + 蓋章動畫 */
     .stamp-image {
-      max-width: 90%;
-      max-height: 90%;
+      width: 90%;
+      height: auto;
       object-fit: contain;
-      display: block;
     }
-
-    /* 蓋章動畫 */
     .stamp-animation {
       animation: stamp-pop 0.5s ease;
     }
@@ -170,33 +165,8 @@
       margin-top: 20px;
       text-align: center;
     }
-
-    /* Toast 元件 */
-    #toast {
-      visibility: hidden;
-      min-width: 200px;
-      max-width: 80%;
-      background-color: rgba(0, 0, 0, 0.85);
-      color: #fff;
-      text-align: center;
-      border-radius: 8px;
-      padding: 12px;
-      position: fixed;
-      z-index: 9999;
-      left: 50%;
-      bottom: 40px;
-      transform: translateX(-50%);
-      opacity: 0;
-      transition: visibility 0s, opacity 0.3s ease-in-out;
-      font-size: 0.95rem;
-    }
-    #toast.show {
-      visibility: visible;
-      opacity: 1;
-    }
   </style>
 </head>
-
 <body>
 
   <!-- 上方標題列 -->
@@ -212,7 +182,7 @@
     </div>
 
     <!-- 單一按鈕：最近地點簽到 -->
-    <button class="single-checkin-button" id="checkinBtn">
+    <button class="single-checkin-button" onclick="checkNearestLocation()">
       簽到
     </button>
 
@@ -224,8 +194,8 @@
     <div id="giftSection">
       <h2>恭喜解鎖禮物！</h2>
       <p>您已經集滿所有景點，快來領取專屬電子桌布：</p>
-      <!-- 以下連結請換成你自己的檔案路徑/連結 -->
-      <a href="https://example.com/myGift.png" target="_blank">
+      <!-- 這裡可換成你自己實際的檔案連結 -->
+      <a href="https://example.com/myGift.png" target="_blank" id="giftLink">
         <img src="https://example.com/myGiftThumbnail.png" style="max-width: 200px;">
       </a>
     </div>
@@ -236,65 +206,50 @@
     ↑
   </div>
 
-  <!-- Toast 容器 -->
-  <div id="toast"></div>
-
   <script>
     /*************************************************************************
-     * 你在 Apps Script 部署後得到的 Web App URL
-     * e.g. https://script.google.com/macros/s/xxxxxx/exec
-     * 記得用你自己的！
+     * 這裡改用 fetch 來呼叫 Apps Script Web App API
      *************************************************************************/
-    const BASE_URL = 'https://script.google.com/macros/s/AKfycbwfVWaPebUgwrHWEfTvEkomcM5Hra12YAurH5aoczGx3vrZ2lAyw-cnDxGWMccKjVWnug/exec';
+    const BASE_URL = 'https://script.google.com/macros/s/AKfycbwfVWaPebUgwrHWEfTvEkomcM5Hra12YAurH5aoczGx3vrZ2lAyw-cnDxGWMccKjVWnug/exec';  // <== 你的後端網址
 
-    // 從網址參數中取得 userId，若沒有就給 guest
+    // 從網址 ?user=xxx 取得使用者ID，若無則用 'guest'
     const urlParams = new URLSearchParams(window.location.search);
-    let userId = urlParams.get('user') || 'guest';
+    const userId = urlParams.get('user') || 'guest';
 
-    let locations = [];      // 從後端抓取的地點清單
-    let userCheckIns = [];   // 已簽到的地點ID
-    const CHECKIN_RADIUS = 500; // 0.5 公里
+    let locations = [];     // 從後端抓取的地點清單
+    let userCheckIns = [];  // 使用者已簽到的地點ID
+    const CHECKIN_RADIUS = 500; // 500公尺
 
-    // 頁面載入時
-    window.onload = async function() {
-      try {
-        // 取得地點清單
-        locations = await fetchLocationsData();
-        // 取得該使用者打卡
-        userCheckIns = await fetchUserCheckIns(userId);
-        // 顯示集點卡
-        renderStampCard();
-        // 若已集滿所有景點 (>=9)
-        if (userCheckIns.length >= 9) {
-          showGiftSection();
-        }
-      } catch (err) {
-        console.error(err);
-        showToast('初始化失敗，請稍後再試。');
-      }
-    };
-
-    // 綁定「最近地點簽到」按鈕
-    document.getElementById('checkinBtn').addEventListener('click', checkNearestLocation);
-
-    // 1. 取得全部地點資料
-    async function fetchLocationsData() {
-      const url = `${BASE_URL}?action=getLocationsData`;
-      const response = await fetch(url);
-      if (!response.ok) {
-        throw new Error('取得地點資料失敗');
-      }
-      return await response.json();
+    // 1. 頁面載入：抓地點清單後，再抓使用者簽到紀錄
+    window.onload = initPage;
+    function initPage() {
+      getLocationsData()
+        .then(locData => {
+          locations = locData;
+          // 再抓簽到
+          return loadUserCheckIns();
+        })
+        .catch(err => {
+          console.error('取得地點資料失敗', err);
+          alert('無法取得地點資料：' + err.message);
+        });
     }
 
-    // 2. 取得使用者打卡紀錄
-    async function fetchUserCheckIns(userId) {
-      const url = `${BASE_URL}?action=getCheckInsByUser&userId=${encodeURIComponent(userId)}`;
-      const response = await fetch(url);
-      if (!response.ok) {
-        throw new Error('取得打卡紀錄失敗');
-      }
-      return await response.json(); // 回傳 locationId 陣列
+    // 2. 向後端抓使用者簽到資訊
+    function loadUserCheckIns() {
+      return getCheckInsByUser(userId)
+        .then(checkIns => {
+          userCheckIns = checkIns;
+          renderStampCard();
+          // 若簽到 >=9 個則顯示禮物
+          if (userCheckIns.length >= 9) {
+            showGiftSection();
+          }
+        })
+        .catch(err => {
+          console.error('取得簽到資料失敗', err);
+          alert('無法取得簽到資料：' + err.message);
+        });
     }
 
     // 3. 顯示集點卡
@@ -309,35 +264,36 @@
         // 是否已簽到？
         const isStamped = userCheckIns.includes(loc.id);
         if (isStamped) {
+          // 已蓋章
           slot.classList.add('stamped');
           const stampImg = document.createElement('img');
           stampImg.className = 'stamp-image stamp-animation';
-          // 若沒有 stampImage，就用預設測試圖
-          stampImg.src = loc.stampImage || 'https://via.placeholder.com/120.png?text=STAMP';
+          // 若該地點沒上傳 stampImage，則用簡易的placeholder
+          stampImg.src = loc.stampImage || 'https://via.placeholder.com/120?text=STAMP';
           slot.appendChild(stampImg);
         } else {
-          slot.textContent = loc.name;
+          // 未蓋章 -> 顯示地點名稱
+          slot.innerText = loc.name;
         }
 
         stampCardEl.appendChild(slot);
       });
     }
 
-    // 4. 最近地點簽到 (GPS定位 -> 計算最近 -> 簽到)
+    // 4. 最近地點簽到 -> GPS -> 找最近地點 -> 若在500公尺內則打卡
     function checkNearestLocation() {
       if (!navigator.geolocation) {
-        showToast('你的裝置不支援 GPS 定位');
+        alert('你的裝置不支援 GPS 定位');
         return;
       }
       navigator.geolocation.getCurrentPosition(
-        async position => {
+        position => {
           const userLat = position.coords.latitude;
           const userLng = position.coords.longitude;
 
+          // 找最近
           let nearestLoc = null;
           let minDist = Infinity;
-
-          // 找出最近的地點
           locations.forEach(loc => {
             const dist = getDistanceFromLatLngInM(userLat, userLng, loc.lat, loc.lng);
             if (dist < minDist) {
@@ -347,52 +303,52 @@
           });
 
           if (!nearestLoc) {
-            showToast('無法計算最近地點');
+            alert('尚無地點資料或無法取得最近地點');
             return;
           }
 
           if (minDist <= CHECKIN_RADIUS) {
-            // 在 500m 以內 -> call recordCheckin
-            const result = await recordCheckin(userId, nearestLoc.id);
-            if (result.status === 'success') {
-              showToast(`成功簽到：${nearestLoc.name}`);
-              refreshStampCard();
-            } else if (result.status === 'already_checked_in') {
-              showToast(`你已經在「${nearestLoc.name}」簽到過了`);
-            } else {
-              showToast(`簽到失敗：${result.message}`);
-            }
+            // 簽到
+            recordCheckin(userId, nearestLoc.id)
+              .then(result => {
+                if (result.status === 'success') {
+                  alert(`成功簽到：${nearestLoc.name}`);
+                  refreshStampCard();
+                } else if (result.status === 'already_checked_in') {
+                  alert(`你已經在「${nearestLoc.name}」簽到過了`);
+                } else {
+                  alert(`其他狀態: ${result.message}`);
+                }
+              })
+              .catch(err => {
+                alert('呼叫失敗: ' + err.message);
+              });
           } else {
-            // 超過 500m
-            showToast(`離最近地點「${nearestLoc.name}」還有 ${Math.round(minDist)} 公尺，無法簽到`);
+            alert(`你離最近的地點「${nearestLoc.name}」還有約 ${Math.round(minDist)} 公尺，無法簽到`);
           }
         },
         error => {
-          showToast('取得GPS失敗，請確認已允許定位');
+          alert('取得GPS失敗，請確認已允許定位');
         }
       );
     }
 
-    // 5. 呼叫後端 recordCheckin
-    async function recordCheckin(userId, locationId) {
-      const url = `${BASE_URL}?action=recordCheckin&userId=${encodeURIComponent(userId)}&locationId=${encodeURIComponent(locationId)}`;
-      const response = await fetch(url);
-      if (!response.ok) {
-        throw new Error('recordCheckin API 錯誤');
-      }
-      return await response.json(); // {status, message}
+    // 5. 簽到成功後，重新取得簽到資料 -> 更新集點卡
+    function refreshStampCard() {
+      getCheckInsByUser(userId)
+        .then(checkIns => {
+          userCheckIns = checkIns;
+          renderStampCard();
+          if (userCheckIns.length >= 9) {
+            showGiftSection();
+          }
+        })
+        .catch(err => {
+          console.error('更新集點卡失敗', err);
+        });
     }
 
-    // 6. 重新抓取打卡紀錄、更新畫面
-    async function refreshStampCard() {
-      userCheckIns = await fetchUserCheckIns(userId);
-      renderStampCard();
-      if (userCheckIns.length >= 9) {
-        showGiftSection();
-      }
-    }
-
-    // 7. 顯示禮物區
+    // 6. 顯示禮物區
     function showGiftSection() {
       const giftSec = document.getElementById('giftSection');
       if (giftSec) {
@@ -400,35 +356,55 @@
       }
     }
 
-    // 8. 計算兩點距離 (公尺) - Haversine
+    // 7. 計算兩點距離 (公尺) - Haversine
     function getDistanceFromLatLngInM(lat1, lng1, lat2, lng2) {
       function deg2rad(deg) { return deg * (Math.PI / 180); }
-      const R = 6371000; // 地球半徑(公尺)
+      const R = 6371e3; // 地球半徑(公尺)
       const dLat = deg2rad(lat2 - lat1);
       const dLng = deg2rad(lng2 - lng1);
       const a =
-        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.sin(dLat/2) * Math.sin(dLat/2) +
         Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) *
-        Math.sin(dLng / 2) * Math.sin(dLng / 2);
-      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        Math.sin(dLng/2) * Math.sin(dLng/2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
       return R * c;
     }
 
-    // 9. 浮動按鈕：捲動至頂
+    // 8. 浮動按鈕 (FAB)：捲動至頂
     function scrollToTop() {
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
 
-    // 10. Toast 函式 (取代 alert)
-    function showToast(message, duration = 3000) {
-      const toast = document.getElementById("toast");
-      toast.textContent = message;
-      toast.classList.add("show");
+    /*************************************************************************
+     * 呼叫後端 API
+     *************************************************************************/
+    // 取得所有地點
+    function getLocationsData() {
+      return fetch(`${BASE_URL}?action=getLocationsData`)
+        .then(response => {
+          if (!response.ok) throw new Error('取得地點失敗');
+          return response.json();
+        });
+    }
 
-      // 過幾秒後自動隱藏
-      setTimeout(() => {
-        toast.classList.remove("show");
-      }, duration);
+    // 取得指定使用者的簽到地點
+    function getCheckInsByUser(uid) {
+      const url = `${BASE_URL}?action=getCheckInsByUser&userId=${encodeURIComponent(uid)}`;
+      return fetch(url)
+        .then(response => {
+          if (!response.ok) throw new Error('取得使用者簽到失敗');
+          return response.json();
+        });
+    }
+
+    // 簽到
+    function recordCheckin(uid, locationId) {
+      const url = `${BASE_URL}?action=recordCheckin&userId=${encodeURIComponent(uid)}&locationId=${encodeURIComponent(locationId)}`;
+      return fetch(url)
+        .then(response => {
+          if (!response.ok) throw new Error('recordCheckin 失敗');
+          return response.json();
+        });
     }
   </script>
 </body>
