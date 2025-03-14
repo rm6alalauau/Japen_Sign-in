@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1.0,shrink-to-fit=no" />
+    <title>打卡 (GitHub Pages + Apps Script)</title>
+
+    <style>
+        :root {
+            --md3-color-primary: #6200EE;
+            --md3-color-on-primary: #ffffff;
+            --md3-color-surface: #FFFFFF;
+            --md3-color-on-surface: #1C1B1F;
+            --md3-color-surface-variant: #F3EDF7;
+            --md3-color-outline: #79747E;
+            --md3-shape-corner: 12px;
+            --md3-elevation: 0 1px 2px rgba(0, 0, 0, 0.15);
+            --md3-elevation-high: 0 4px 8px rgba(0, 0, 0, 0.2);
+            --md3-font-size-title: 1.25rem;
+            --md3-font-size-body: 1rem;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: "Roboto", sans-serif;
+            background: var(--md3-color-surface);
+            color: var(--md3-color-on-surface);
+            line-height: 1.5;
+        }
+
+        h1,
+        h2,
+        h3 {
+            margin: 0;
+        }
+
+        .app-bar {
+            background: var(--md3-color-primary);
+            color: var(--md3-color-on-primary);
+            padding: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: var(--md3-elevation);
+        }
+
+        .app-bar h1 {
+            font-size: 1.5rem;
+            margin: 0;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 16px;
+        }
+
+        .description {
+            background: var(--md3-color-surface-variant);
+            padding: 12px;
+            border-radius: var(--md3-shape-corner);
+            margin-bottom: 16px;
+            box-shadow: var(--md3-elevation);
+            font-size: var(--md3-font-size-body);
+        }
+
+        .single-checkin-button {
+            background: var(--md3-color-primary);
+            color: var(--md3-color-on-primary);
+            border: none;
+            border-radius: var(--md3-shape-corner);
+            padding: 12px;
+            font-size: 1rem;
+            cursor: pointer;
+            box-shadow: var(--md3-elevation);
+            transition: background 0.2s;
+            margin-bottom: 16px;
+            width: 100%;
+        }
+
+        .single-checkin-button:hover {
+            background: #4B00C3;
+        }
+
+        .stamp-title {
+            font-size: var(--md3-font-size-title);
+            margin-bottom: 8px;
+        }
+
+        .stamp-card {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 16px;
+            margin-top: 20px;
+        }
+
+        .stamp-slot {
+            width: 120px;
+            height: 120px;
+            background-color: var(--md3-color-surface);
+            border: 2px dashed var(--md3-color-outline);
+            border-radius: var(--md3-shape-corner);
+            box-shadow: var(--md3-elevation);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 4px;
+            overflow: hidden;
+            font-size: 0.9rem;
+            position: relative;
+        }
+
+        .stamp-slot.stamped {
+            border: none;
+            background-color: #E0DAF6;
+        }
+
+        .stamp-image {
+            width: 90%;
+            height: auto;
+            object-fit: contain;
+        }
+
+        .stamp-animation {
+            animation: stamp-pop 0.5s ease;
+        }
+
+        @keyframes stamp-pop {
+            0% {
+                transform: scale(2);
+                opacity: 0;
+            }
+
+            50% {
+                transform: scale(0.8);
+                opacity: 1;
+            }
+
+            100% {
+                transform: scale(1);
+            }
+        }
+
+        #giftSection {
+            display: none;
+            margin-top: 20px;
+            text-align: center;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="app-bar">
+        <h1>打卡</h1>
+    </div>
+    <div class="container">
+        <div class="description">
+            <p>允許定位後，可點擊「簽到」按鈕或直接在下方查看集點卡狀態。</p>
+            <p>若你身處該地點 500 公尺內，即可成功蓋章。</p>
+        </div>
+
+        <!-- 一個按鈕：自動檢查最近地點並簽到 -->
+        <button class="single-checkin-button" onclick="checkNearestLocation()">
+            簽到
+        </button>
+
+        <h2 class="stamp-title">我的集點卡</h2>
+        <div id="stampCard" class="stamp-card"></div>
+
+        <div id="giftSection">
+            <h2>恭喜解鎖禮物！</h2>
+            <p>您已經集滿所有景點，快來領取專屬電子桌布：</p>
+            <a href="https://example.com/myGift.png" target="_blank" id="giftLink">
+                <img src="https://example.com/myGiftThumbnail.png" style="max-width: 200px;">
+            </a>
+        </div>
+    </div>
+
+    <script>
+        // ===== 修改此處成你的 Apps Script Web App URL ====
+        const WEBAPP_URL = "https://script.google.com/macros/s/AKfycbwfVWaPebUgwrHWEfTvEkomcM5Hra12YAurH5aoczGx3vrZ2lAyw-cnDxGWMccKjVWnug/exec";
+        // ==============================================
+
+        let userId = "guest";
+        let locations = [];
+        let userCheckIns = [];
+        const CHECKIN_RADIUS = 500; // 500公尺
+
+        window.onload = async function () {
+            // 1) 取得地點資料
+            const locData = await api_getLocationsData();
+            locations = locData;
+            // 2) 取得已簽到地點
+            const checkIns = await api_getCheckInsByUser(userId);
+            userCheckIns = checkIns;
+            renderStampCard();
+            if (userCheckIns.length >= 9) {
+                showGiftSection();
+            }
+        };
+
+        async function checkNearestLocation() {
+            if (!navigator.geolocation) {
+                return alert('你的裝置不支援 GPS 定位');
+            }
+            navigator.geolocation.getCurrentPosition(async (pos) => {
+                const userLat = pos.coords.latitude;
+                const userLng = pos.coords.longitude;
+                // 找最近地點
+                let minDist = Infinity;
+                let nearestLoc = null;
+                locations.forEach(loc => {
+                    const dist = getDistanceFromLatLngInM(userLat, userLng, loc.lat, loc.lng);
+                    if (dist < minDist) {
+                        minDist = dist;
+                        nearestLoc = loc;
+                    }
+                });
+                if (!nearestLoc) {
+                    return alert('尚無地點資料');
+                }
+                if (minDist <= CHECKIN_RADIUS) {
+                    // 符合範圍 -> recordCheckin
+                    const result = await api_recordCheckin(userId, nearestLoc.id);
+                    if (result.status === 'success') {
+                        alert(`成功簽到：${nearestLoc.name}`);
+                        // 重新抓取已簽到
+                        userCheckIns = await api_getCheckInsByUser(userId);
+                        renderStampCard();
+                        if (userCheckIns.length >= 9) {
+                            showGiftSection();
+                        }
+                    } else if (result.status === 'already_checked_in') {
+                        alert(`你已經在「${nearestLoc.name}」簽到過了`);
+                    } else {
+                        alert(`其他狀態: ${result.message}`);
+                    }
+                } else {
+                    alert(`你離最近的地點「${nearestLoc.name}」還有約 ${Math.round(minDist)} 公尺，無法簽到`);
+                }
+            }, (err) => {
+                alert('取得GPS失敗，請確認已允許定位');
+            });
+        }
+
+        function renderStampCard() {
+            const stampCardEl = document.getElementById('stampCard');
+            stampCardEl.innerHTML = '';
+            locations.forEach(loc => {
+                const slot = document.createElement('div');
+                slot.className = 'stamp-slot';
+                const isStamped = userCheckIns.includes(loc.id);
+                if (isStamped) {
+                    slot.classList.add('stamped');
+                    const stampImg = document.createElement('img');
+                    stampImg.className = 'stamp-image stamp-animation';
+                    stampImg.src = loc.stampImage || 'https://via.placeholder.com/120?text=STAMP';
+                    slot.appendChild(stampImg);
+                } else {
+                    slot.innerText = loc.name;
+                }
+                stampCardEl.appendChild(slot);
+            });
+        }
+
+        function showGiftSection() {
+            document.getElementById('giftSection').style.display = 'block';
+        }
+
+        function getDistanceFromLatLngInM(lat1, lng1, lat2, lng2) {
+            function deg2rad(deg) { return deg * (Math.PI / 180); }
+            const R = 6371e3;
+            const dLat = deg2rad(lat2 - lat1);
+            const dLng = deg2rad(lng2 - lng1);
+            const a =
+                Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) *
+                Math.sin(dLng / 2) * Math.sin(dLng / 2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+            return R * c;
+        }
+
+        // ================== 以下是呼叫 Apps Script 的函式 ===================
+        // 注意: 必須使用 x-www-form-urlencoded, 不要帶自訂 headers, 以避免 CORS 預檢
+
+        async function api_getLocationsData() {
+            const url = WEBAPP_URL + "?action=getLocations";
+            // GET 請求 -> 回傳 JSON
+            const res = await fetch(url);  // 簡單 GET 請求不會預檢
+            return await res.json();
+        }
+
+        async function api_getCheckInsByUser(uid) {
+            const url = WEBAPP_URL + "?action=getCheckIns&userId=" + encodeURIComponent(uid);
+            const res = await fetch(url);
+            return await res.json();
+        }
+
+        async function api_recordCheckin(uid, locId) {
+            // POST, x-www-form-urlencoded
+            const bodyStr = "userId=" + encodeURIComponent(uid) + "&locationId=" + encodeURIComponent(locId);
+            const res = await fetch(WEBAPP_URL, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded'
+                },
+                body: bodyStr
+            });
+            return await res.json();
+        }
+    </script>
+</body>
+
+</html>
