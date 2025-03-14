@@ -98,47 +98,43 @@
       gap: 16px;
       margin-top: 20px;
     }
-    /* stamp-slot: 讓它完整使用 flex 置中 */
-.stamp-slot {
-  width: 120px;
-  height: 120px;
-  /* 建議保留你原先的背景、邊框、box-shadow、border-radius... */
-  background-color: var(--md3-color-surface);
-  border: 2px dashed var(--md3-color-outline);
-  border-radius: var(--md3-shape-corner);
-  box-shadow: var(--md3-elevation);
 
-  /* 這裡確保「內容(圖片)垂直水平置中」 */
-  display: flex;
-  align-items: center;
-  justify-content: center;
+    .stamp-slot {
+      width: 120px;
+      height: 120px;
+      background-color: var(--md3-color-surface);
+      border: 2px dashed var(--md3-color-outline);
+      border-radius: var(--md3-shape-corner);
+      box-shadow: var(--md3-elevation);
+      /* 關鍵：使用 flex 置中內容 */
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 4px;
+      overflow: hidden;
+      font-size: 0.9rem;
+      position: relative;
+    }
 
-  /* 你也可以保留 padding:4px, overflow:hidden; 依需求調整 */
-  padding: 4px;
-  overflow: hidden;
-  font-size: 0.9rem;
-  position: relative;
-}
+    .stamp-slot.stamped {
+      border: none;
+      background-color: #E0DAF6;
+    }
 
-/* stamp-slot.stamped: 已蓋章就用實心底色 */
-.stamp-slot.stamped {
-  border: none;
-  background-color: #E0DAF6;
-}
+    .stamp-image {
+      /* 關鍵：用 max-width / max-height 讓印章盡量放大並置中 */
+      max-width: 90%;
+      max-height: 90%;
+      display: block;  /* for margin auto to apply if needed */
+      margin: auto;
+      object-fit: contain; 
+    }
 
-/* stamp-image: 以 max-width / max-height 控制大小，並自動置中 */
-.stamp-image {
-  display: block;       /* 讓 margin: auto 生效 */
-  margin: auto;         /* 自動水平置中 */
-  max-width: 90%;       /* 圖片不會大於 stamp-slot 的 90% */
-  max-height: 90%;      /* 同時控制高度 */
-  object-fit: contain;  /* 使圖片保持等比例 */
-}
-
-/* 另外可保留 stamp-animation，如原本的 @keyframes stamp-pop */
-.stamp-animation {
-  animation: stamp-pop 0.5s ease;
-}
+    /* 蓋章動畫 */
+    .stamp-animation {
+      animation: stamp-pop 0.5s ease;
+    }
     @keyframes stamp-pop {
       0% {
         transform: scale(2);
@@ -176,6 +172,30 @@
       display: none;
       margin-top: 20px;
       text-align: center;
+    }
+
+    /* Toast 元件 */
+    #toast {
+      visibility: hidden;
+      min-width: 200px;
+      max-width: 80%;
+      background-color: rgba(0, 0, 0, 0.85);
+      color: #fff;
+      text-align: center;
+      border-radius: 8px;
+      padding: 12px;
+      position: fixed;
+      z-index: 9999;
+      left: 50%;
+      bottom: 40px;
+      transform: translateX(-50%);
+      opacity: 0;
+      transition: visibility 0s, opacity 0.3s ease-in-out;
+      font-size: 0.95rem;
+    }
+    #toast.show {
+      visibility: visible;
+      opacity: 1;
     }
   </style>
 </head>
@@ -218,12 +238,15 @@
     ↑
   </div>
 
+  <!-- Toast 容器 -->
+  <div id="toast"></div>
+
   <script>
     /*************************************************************************
      * 你在 Apps Script 部署後得到的 Web App URL (e.g. https://script.google.com/macros/s/xxx/exec)
      * 記得用你自己的！
      *************************************************************************/
-    const BASE_URL = 'https://script.google.com/macros/s/AKfycbwfVWaPebUgwrHWEfTvEkomcM5Hra12YAurH5aoczGx3vrZ2lAyw-cnDxGWMccKjVWnug/exec';
+    const BASE_URL = 'https://script.google.com/macros/s/你的_AppsScript_WebApp_URL/exec';
 
     // 從網址參數中取得 userId，若沒有就給 guest
     const urlParams = new URLSearchParams(window.location.search);
@@ -236,19 +259,15 @@
     // 1. 頁面載入時
     window.onload = async function() {
       try {
-        // 先抓地點資料
         locations = await fetchLocationsData();
-        // 再抓使用者的打卡紀錄
         userCheckIns = await fetchUserCheckIns(userId);
-        // 顯示集點卡
         renderStampCard();
-        // 如果打卡數 >= 9，就顯示禮物
         if (userCheckIns.length >= 9) {
           showGiftSection();
         }
       } catch (err) {
         console.error(err);
-        alert('初始化失敗，請稍後再試。');
+        showToast('初始化失敗，請稍後再試。');
       }
     };
 
@@ -293,7 +312,7 @@
           stampImg.src = loc.stampImage || 'https://via.placeholder.com/120?text=STAMP';
           slot.appendChild(stampImg);
         } else {
-          slot.innerText = loc.name;
+          slot.textContent = loc.name;
         }
 
         stampCardEl.appendChild(slot);
@@ -303,7 +322,7 @@
     // 6. 點擊「最近地點簽到」-> 取得GPS -> 計算最近地點 -> 若距離<=500m -> 打卡
     function checkNearestLocation() {
       if (!navigator.geolocation) {
-        alert('你的裝置不支援 GPS 定位');
+        showToast('你的裝置不支援 GPS 定位');
         return;
       }
       navigator.geolocation.getCurrentPosition(
@@ -323,7 +342,7 @@
           });
 
           if (!nearestLoc) {
-            alert('無法計算最近地點');
+            showToast('無法計算最近地點');
             return;
           }
 
@@ -331,19 +350,19 @@
             // 在 500m 以內 -> call recordCheckin
             const result = await recordCheckin(userId, nearestLoc.id);
             if (result.status === 'success') {
-              alert(`成功簽到：${nearestLoc.name}`);
+              showToast(`成功簽到：${nearestLoc.name}`);
               refreshStampCard();
             } else if (result.status === 'already_checked_in') {
-              alert(`你已經在「${nearestLoc.name}」簽到過了`);
+              showToast(`你已經在「${nearestLoc.name}」簽到過了`);
             } else {
-              alert(`簽到失敗：${result.message}`);
+              showToast(`簽到失敗：${result.message}`);
             }
           } else {
-            alert(`你離最近的地點「${nearestLoc.name}」還有約 ${Math.round(minDist)} 公尺，無法簽到`);
+            showToast(`離最近地點「${nearestLoc.name}」還有約 ${Math.round(minDist)} 公尺，無法簽到`);
           }
         },
         error => {
-          alert('取得GPS失敗，請確認已允許定位。');
+          showToast('取得GPS失敗，請確認已允許定位');
         }
       );
     }
@@ -392,6 +411,18 @@
     // 11. 浮動按鈕：捲動至頂
     function scrollToTop() {
       window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    // 12. Toast 函式
+    function showToast(message, duration = 3000) {
+      const toast = document.getElementById("toast");
+      toast.textContent = message;
+      toast.classList.add("show");
+
+      // 過幾秒後移除
+      setTimeout(() => {
+        toast.classList.remove("show");
+      }, duration);
     }
   </script>
 </body>
